@@ -424,12 +424,13 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
                                 height: 40,
                                 color: Colors.white10,
                               ),
+
                               // --- NEW: TRUE SATELLITE ELEVATION ---
                               Expanded(
-                                child: _buildGuidanceInstruction(
-                                  "TRUE SAT EL",
-                                  "${trueElevation.toStringAsFixed(1)}°",
-                                  Colors.white54,
+                                child: _buildAzimuthMatchData(
+                                  "AZIMUTH",
+                                  currentAzimuth,
+                                  isAzimuthLocked,
                                 ),
                               ),
                               Container(
@@ -438,16 +439,42 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
                                 color: Colors.white10,
                               ),
                               Expanded(
-                                child: _buildGuidanceInstruction(
-                                  isElevationLocked
-                                      ? "ALIGNED"
-                                      : (diffElevation > 0
-                                            ? "TILT UP"
-                                            : "TILT DOWN"),
-                                  "${diffElevation.abs().toStringAsFixed(1)}°",
-                                  isElevationLocked
-                                      ? _successGreen
-                                      : _accentCyan,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      targetSatellite.name.toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      targetSatellite.formattedPosition,
+                                      style: const TextStyle(
+                                        color: _alertOrange,
+                                        fontFamily: 'Courier',
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      "TGT: ${trueAzimuth.toStringAsFixed(1)}°",
+                                      style: TextStyle(
+                                        color: Colors.white38,
+                                        fontFamily: 'Courier',
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -469,51 +496,12 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
                     child: Row(
                       children: [
                         Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                targetSatellite.name.toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                targetSatellite.formattedPosition,
-                                style: const TextStyle(
-                                  color: _alertOrange,
-                                  fontFamily: 'Courier',
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              const Text(
-                                "ORBIT SLOT",
-                                style: TextStyle(
-                                  color: Colors.white38,
-                                  fontFamily: 'Courier',
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(width: 1, height: 40, color: Colors.white10),
-                        Expanded(
-                          child: _buildLiveMatchData(
-                            "AZIMUTH",
-                            currentAzimuth,
-                            trueAzimuth,
-                            isAzimuthLocked,
+                          child: _buildGuidanceInstruction(
+                            isElevationLocked
+                                ? "ALIGNED"
+                                : (diffElevation > 0 ? "TILT UP" : "TILT DOWN"),
+                            "${diffElevation.abs().toStringAsFixed(1)}°",
+                            isElevationLocked ? _successGreen : _accentCyan,
                           ),
                         ),
                         Container(width: 1, height: 40, color: Colors.white10),
@@ -523,6 +511,15 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
                             currentElevation,
                             targetPhysicalElevation, // Mount Target
                             isElevationLocked,
+                          ),
+                        ),
+                        Container(width: 1, height: 40, color: Colors.white10),
+
+                        Expanded(
+                          child: _buildGuidanceInstruction(
+                            "TRUE SAT EL",
+                            "${trueElevation.toStringAsFixed(1)}°",
+                            Colors.white54,
                           ),
                         ),
                       ],
@@ -654,6 +651,38 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
           ),
           textAlign: TextAlign.center,
         ),
+      ],
+    );
+  }
+
+  Widget _buildAzimuthMatchData(String label, double current, bool isLocked) {
+    Color valueColor = isLocked ? _successGreen : Colors.white;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 9,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "${current.toStringAsFixed(1)}°",
+          style: TextStyle(
+            color: valueColor,
+            fontFamily: 'Courier',
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 2),
       ],
     );
   }
