@@ -310,9 +310,8 @@ class _SatelliteRegistryScreenState
                               ),
                               onTap: () {
                                 ref
-                                        .read(activeSatelliteProvider.notifier)
-                                        .state =
-                                    sat;
+                                    .read(activeSatelliteProvider.notifier)
+                                    .setActiveSatellite(sat);
                                 Navigator.pop(context);
                               },
                             ),
@@ -346,7 +345,18 @@ class _SatelliteRegistryScreenState
                               onDismissed: (direction) {
                                 // Delete from database
                                 SatelliteRepository.removeSatellite(sat);
-
+                                // 2. CHECK IF THEY JUST DELETED THE ACTIVE SATELLITE
+                                final currentActive = ref.read(
+                                  activeSatelliteProvider,
+                                );
+                                if (currentActive.name == sat.name) {
+                                  // Revert to the first default satellite instantly
+                                  final fallback =
+                                      SatelliteRepository.satellites.first;
+                                  ref
+                                      .read(activeSatelliteProvider.notifier)
+                                      .setActiveSatellite(fallback);
+                                }
                                 // Refresh the UI
                                 setState(() {});
 
