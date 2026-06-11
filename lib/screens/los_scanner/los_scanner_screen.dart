@@ -16,7 +16,7 @@ import '../../core/providers/settings_provider.dart';
 import '../tutorial/tutorial_dialog.dart';
 import '../setting/settings_menu.dart';
 import '../../core/providers/accelerometer_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+// import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 
 // ==========================================
@@ -139,7 +139,10 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _isAppInForeground = true;
-
+      // 🛑 THE FIX: Force Riverpod to re-run the camera check!
+      // When they swipe back from settings, this clears the error
+      // and instantly boots up the camera hardware.
+      ref.invalidate(cameraProvider);
       // --- FORCE THE LOOP TO RE-EVALUATE AUDIO ---
       // By toggling these, the next loop iteration will see a "change"
       // and trigger the audio logic block automatically.
@@ -480,7 +483,8 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
                               ),
                               onPressed: () {
                                 // Directs user to the OS settings for your app
-                                openAppSettings();
+                                //openAppSettings();
+                                Geolocator.openAppSettings();
                               },
                             ),
                           ),

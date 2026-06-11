@@ -15,7 +15,7 @@ import '../../core/providers/active_satellite_provider.dart';
 import '../../core/providers/settings_provider.dart';
 import '../tutorial/tutorial_dialog.dart';
 import '../setting/settings_menu.dart';
-import 'package:permission_handler/permission_handler.dart';
+// import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 
 const Color _bgDark = Color(0xFF090E17);
@@ -54,7 +54,10 @@ class _ArViewScreenState extends ConsumerState<ArViewScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _isAppInForeground = true;
-
+      // 🛑 THE FIX: Force Riverpod to re-run the camera check!
+      // When they swipe back from settings, this clears the error
+      // and instantly boots up the camera hardware.
+      ref.invalidate(cameraProvider);
       // --- FORCE THE LOOP TO RE-EVALUATE AUDIO ---
       _wasLocked = !_wasLocked;
       _wasSoundEnabled = false;
@@ -548,7 +551,8 @@ class _ArViewScreenState extends ConsumerState<ArViewScreen>
                               ),
                               onPressed: () {
                                 // Directs user to the OS settings for your app
-                                openAppSettings();
+                                //openAppSettings();
+                                Geolocator.openAppSettings();
                               },
                             ),
                           ),
