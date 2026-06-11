@@ -76,13 +76,37 @@ class LocationNotifier extends Notifier<LocationState>
   // --- THE LIFECYCLE TRIPWIRE ---
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // If the user just came back to the app (e.g., pushed the top drawer back up)
-    if (state == AppLifecycleState.resumed) {
-      // If we previously had an error and aren't using the manual override...
-      if (this.state.error != null && !this.state.isManualOverride) {
-        debugPrint("App resumed! Re-checking hardware GPS...");
-        _init(); // Instantly re-run the hardware check!
-      }
+    switch (state) {
+      // --------------------------------------------------------
+      // APP MOVED TO BACKGROUND (Minimized or Screen Locked)
+      // --------------------------------------------------------
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        // Pause the GPS stream to save battery!
+        // (Only if we aren't using a manual override)
+        if (!this.state.isManualOverride) {
+          _sub?.pause();
+          debugPrint("App backgrounded: GPS stream paused.");
+        }
+        break;
+
+      // --------------------------------------------------------
+      // APP RETURNED TO FOREGROUND
+      // --------------------------------------------------------
+      case AppLifecycleState.resumed:
+        if (this.state.error != null && !this.state.isManualOverride) {
+          // Scenario A: They had an error (like GPS off). Re-run the whole init!
+          debugPrint("App resumed! Re-checking hardware GPS...");
+          _init(); 
+        } else if (!this.state.isManualOverride) {
+          // Scenario B: They had a good connection. Just unpause the stream!
+          _sub?.resume();
+          debugPrint("App resumed: GPS stream resumed.");
+        }
+        break;
+
+      default:
+        break;
     }
   }
 
