@@ -204,10 +204,20 @@ class LocationNotifier extends Notifier<LocationState>
     final service = ref.read(locationServiceProvider);
 
     // 1. Trigger the native OS popup explicitly
-    await service.requestPermission();
+    var permission = await service.requestPermission();
 
-    // 2. Re-run the hardware check instantly after they answer
-    _init();
+    // 2. If they hit deny, or the OS silently blocked the popup,
+    // we MUST force the UI to show the red "OPEN APP SETTINGS" button!
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      state = state.copyWith(
+        isLocked: false,
+        error: "PERMISSION PERMANENTLY DENIED IN SETTINGS",
+      );
+    } else {
+      // 3. If they granted it, run the normal hardware check
+      _init();
+    }
   }
 
   // ==========================================
