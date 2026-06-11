@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 import '../../core/providers/compass_provider.dart';
-import '../../core/providers/accelerometer_provider.dart';
 import '../../core/providers/location_provider.dart';
 import '../../core/providers/active_satellite_provider.dart';
 import '../../core/utils/satellite_math.dart';
@@ -265,9 +264,6 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
       targetSatellite.position,
     );
 
-    // --- APPLY OFFSET ---
-    final targetPhysicalElevation = trueElevation - settings.dishOffsetAngle;
-
     return Scaffold(
       backgroundColor: _bgDark,
       appBar: AppBar(
@@ -307,19 +303,13 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
       body: Consumer(
         builder: (context, ref, child) {
           final compassState = ref.watch(compassProvider);
-          final accelState = ref.watch(accelerometerProvider);
 
           final currentAzimuth = compassState.azimuth;
-          final currentElevation = accelState.elevation;
 
           double diffAzimuth = trueAzimuth - currentAzimuth;
           diffAzimuth = (diffAzimuth + 540) % 360 - 180;
 
-          // Use the offset target to direct the user for physical tilting
-          double diffElevation = targetPhysicalElevation - currentElevation;
-
           bool isAzimuthLocked = diffAzimuth.abs() < 2.0;
-          bool isElevationLocked = diffElevation.abs() < 2.0;
 
           // The compass only cares if the Azimuth is locked
           bool isFullyLocked = isAzimuthLocked;
@@ -481,51 +471,6 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
                           ),
                   ),
 
-                  const SizedBox(height: 12),
-
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 16,
-                      horizontal: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _panelColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _borderLight),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildGuidanceInstruction(
-                            isElevationLocked
-                                ? "ALIGNED"
-                                : (diffElevation > 0 ? "TILT UP" : "TILT DOWN"),
-                            "${diffElevation.abs().toStringAsFixed(1)}°",
-                            isElevationLocked ? _successGreen : _accentCyan,
-                          ),
-                        ),
-                        Container(width: 1, height: 40, color: Colors.white10),
-                        Expanded(
-                          child: _buildLiveMatchData(
-                            "MOUNT EL",
-                            currentElevation,
-                            targetPhysicalElevation, // Mount Target
-                            isElevationLocked,
-                          ),
-                        ),
-                        Container(width: 1, height: 40, color: Colors.white10),
-
-                        Expanded(
-                          child: _buildGuidanceInstruction(
-                            "TRUE SAT EL",
-                            "${trueElevation.toStringAsFixed(1)}°",
-                            Colors.white54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
                   const SizedBox(height: 16),
 
                   Expanded(
@@ -603,53 +548,6 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
               fontWeight: FontWeight.w900,
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLiveMatchData(
-    String label,
-    double current,
-    double target,
-    bool isLocked,
-  ) {
-    Color valueColor = isLocked ? _successGreen : Colors.white;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white54,
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          "${current.toStringAsFixed(1)}°",
-          style: TextStyle(
-            color: valueColor,
-            fontFamily: 'Courier',
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 2),
-        Text(
-          "TGT: ${target.toStringAsFixed(1)}°",
-          style: const TextStyle(
-            color: Colors.white38,
-            fontFamily: 'Courier',
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-          ),
-          textAlign: TextAlign.center,
         ),
       ],
     );
