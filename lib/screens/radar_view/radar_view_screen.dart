@@ -12,6 +12,7 @@ import '../../core/utils/satellite_math.dart';
 import '../../core/providers/settings_provider.dart';
 import '../setting/settings_menu.dart';
 import '../tutorial/tutorial_dialog.dart';
+import 'package:geolocator/geolocator.dart';
 
 const Color _bgDark = Color(0xFF090E17);
 const Color _panelColor = Color(0xFF131A2A);
@@ -152,92 +153,202 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
     final locationState = ref.watch(locationProvider);
     final settings = ref.watch(settingsProvider);
 
+    // ==========================================
+    // UPGRADED GPS LOCK SCREEN w/ ESCAPE HATCH
+    // ==========================================
     if (!locationState.isLocked ||
         locationState.lat == null ||
         locationState.lon == null ||
         (locationState.lat == 0.0 && locationState.lon == 0.0)) {
       final bool hasError = locationState.error != null;
 
-      return Scaffold(
-        backgroundColor: _bgDark,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  hasError
-                      ? Icons.location_disabled_rounded
-                      : Icons.satellite_alt,
-                  color: hasError ? Colors.redAccent : _alertOrange,
-                  size: 80,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  hasError ? "GPS UNAVAILABLE" : "AWAITING SATELLITES",
-                  style: TextStyle(
-                    color: hasError ? Colors.redAccent : _alertOrange,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
+      // Determine exactly what state we are in
+      final bool isHardwareOff =
+          hasError && locationState.error!.contains("TURN ON");
+      final bool isPermDeniedForever =
+          hasError && locationState.error!.contains("PERMANENTLY DENIED");
+      // This is our new state for first-time users!
+      final bool isFirstTimeAsking =
+          hasError && locationState.error == "PERMISSION REQUIRED";
+
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? result) {
+          if (didPop) return;
+          if (context.mounted) Navigator.of(context).pop();
+        },
+        child: Scaffold(
+          backgroundColor: _bgDark,
+          body: Stack(
+            children: [
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        hasError
+                            ? Icons.location_disabled_rounded
+                            : Icons.satellite_alt,
+                        color: hasError ? Colors.redAccent : _alertOrange,
+                        size: 80,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        isFirstTimeAsking
+                            ? "LOCATION REQUIRED"
+                            : (hasError
+                                  ? "GPS UNAVAILABLE"
+                                  : "AWAITING SATELLITES"),
+                        style: TextStyle(
+                          color: hasError ? Colors.redAccent : _alertOrange,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        isFirstTimeAsking
+                            ? "To calculate satellite angles, the app needs your location. Choose a method below:"
+                            : (hasError
+                                  ? "${locationState.error!.toUpperCase()}\n\nPlease fix this in your device settings, or enter coordinates manually."
+                                  : "Searching for hardware GPS lock...\n\nPlease wait, or enter your coordinates manually to bypass."),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
+                          height: 1.6,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      if (!hasError)
+                        const CircularProgressIndicator(color: _alertOrange)
+                      else
+                        const SizedBox(height: 20),
+
+                      const SizedBox(height: 24),
+
+                      // ---------------------------------------------
+                      // ESCAPE HATCH 1: AUTO GPS / OS SETTINGS
+                      // ---------------------------------------------
+                      if (isFirstTimeAsking ||
+                          isHardwareOff ||
+                          isPermDeniedForever) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton.icon(
+                            icon: Icon(
+                              isFirstTimeAsking
+                                  ? Icons.my_location
+                                  : Icons.settings,
+                              color: Colors.white,
+                            ),
+                            label: Text(
+                              isFirstTimeAsking
+                                  ? "GRANT GPS PERMISSION"
+                                  : (isHardwareOff
+                                        ? "TURN ON GPS"
+                                        : "OPEN APP SETTINGS"),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isFirstTimeAsking
+                                  ? _alertOrange
+                                  : Colors.redAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            onPressed: () {
+                              if (isFirstTimeAsking) {
+                                // Triggers the native popup we just made!
+                                ref
+                                    .read(locationProvider.notifier)
+                                    .promptForPermission();
+                              } else if (isHardwareOff) {
+                                Geolocator.openLocationSettings();
+                              } else if (isPermDeniedForever) {
+                                Geolocator.openAppSettings();
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // ---------------------------------------------
+                      // ESCAPE HATCH 2: MANUAL OVERRIDE
+                      // ---------------------------------------------
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(
+                            Icons.edit_location_alt,
+                            color: _accentCyan,
+                          ),
+                          label: const Text(
+                            "ENTER MANUAL OVERRIDE",
+                            style: TextStyle(
+                              color: _accentCyan,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: _accentCyan.withValues(alpha: 0.5),
+                              width: 2,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            backgroundColor: _accentCyan.withValues(
+                              alpha: 0.05,
+                            ),
+                          ),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => const ManualGpsDialog(),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  hasError
-                      ? "${locationState.error!.toUpperCase()}\n\nPlease enable your device's hardware GPS, or enter your coordinates manually to bypass."
-                      : "Searching for hardware GPS lock...\n\nPlease wait, or enter your coordinates manually to bypass.",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13,
-                    height: 1.6,
-                    fontWeight: FontWeight.w600,
+              ),
+
+              // UI BACK BUTTON
+              Positioned(
+                top: 0,
+                left: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new,
+                        color: Colors.white,
+                      ),
+                      onPressed: () {
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                    ),
                   ),
                 ),
-                const SizedBox(height: 32),
-                if (!hasError)
-                  const CircularProgressIndicator(color: _alertOrange)
-                else
-                  const SizedBox(height: 20),
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(
-                      Icons.edit_location_alt,
-                      color: _accentCyan,
-                    ),
-                    label: const Text(
-                      "ENTER MANUAL OVERRIDE",
-                      style: TextStyle(
-                        color: _accentCyan,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: _accentCyan.withValues(alpha: 0.5),
-                        width: 2,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      backgroundColor: _accentCyan.withValues(alpha: 0.05),
-                    ),
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => const ManualGpsDialog(),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       );
