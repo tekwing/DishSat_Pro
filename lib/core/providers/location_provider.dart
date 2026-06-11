@@ -127,21 +127,24 @@ class LocationNotifier extends Notifier<LocationState>
 
     var permission = await service.checkPermission();
 
-    // 🛑 THE FIX: STOP AUTO-REQUESTING PERMISSION!
-    // Instead of forcing the OS popup, we just tell the UI that we need it.
-    if (permission == LocationPermission.denied) {
-      state = state.copyWith(
-        isLocked: false,
-        error: "PERMISSION REQUIRED", // This perfectly matches our new UI logic
-      );
-      return;
-    }
-
     if (permission == LocationPermission.deniedForever) {
       state = state.copyWith(
         isLocked: false,
         error: "PERMISSION PERMANENTLY DENIED IN SETTINGS",
       );
+      return;
+    }
+
+    if (permission == LocationPermission.denied) {
+      // 🛑 THE ANTI-FLICKER SHIELD 🛑
+      // When the OS dialog closes, the app "resumes" and re-runs _init().
+      // If our button ALREADY marked this as permanently denied,
+      // we absolutely MUST NOT downgrade it back to the yellow state!
+      if (state.error == "PERMISSION PERMANENTLY DENIED IN SETTINGS") {
+        return;
+      }
+
+      state = state.copyWith(isLocked: false, error: "PERMISSION REQUIRED");
       return;
     }
 
