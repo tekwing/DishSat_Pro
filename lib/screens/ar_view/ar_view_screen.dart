@@ -456,373 +456,402 @@ class _ArViewScreenState extends ConsumerState<ArViewScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. CAMERA BACKGROUND
-          // 1. CAMERA BACKGROUND
-          Positioned.fill(
-            child: cameraAsync.when(
-              data: (controller) {
-                return FittedBox(
+
+      // 🛑 THE FIX: We wrap the entire body in the camera state!
+      body: cameraAsync.when(
+        loading: () =>
+            const Center(child: CircularProgressIndicator(color: _accentCyan)),
+
+        // ==========================================
+        // CAMERA ERROR SCREEN (Now fully clickable!)
+        // ==========================================
+        error: (error, stack) {
+          final isPermanentlyDenied = error.toString().contains(
+            'PERMISSION_PERMANENTLY_DENIED',
+          );
+
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.videocam_off_rounded,
+                    color: Colors.redAccent,
+                    size: 80,
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "CAMERA REQUIRED",
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    isPermanentlyDenied
+                        ? "You previously denied camera access.\n\nPlease open your device settings and allow camera permissions to use the AR visualizer."
+                        : "Initialization failed: $error",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                      height: 1.6,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  if (isPermanentlyDenied)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.settings, color: _accentCyan),
+                        label: const Text(
+                          "OPEN APP SETTINGS",
+                          style: TextStyle(
+                            color: _accentCyan,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: _accentCyan.withValues(alpha: 0.5),
+                            width: 2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          backgroundColor: _accentCyan.withValues(alpha: 0.05),
+                        ),
+                        onPressed: () {
+                          // This will now definitely work because nothing is blocking it!
+                          Geolocator.openAppSettings();
+                        },
+                      ),
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // NEW: A back button so they aren't trapped!
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      label: const Text(
+                        "GO BACK",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.white24, width: 2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () {
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+
+        // ==========================================
+        // ACTIVE AR UI (Only shows if camera is working)
+        // ==========================================
+        data: (controller) {
+          return Stack(
+            children: [
+              // 1. CAMERA BACKGROUND
+              Positioned.fill(
+                child: FittedBox(
                   fit: BoxFit.cover,
                   child: SizedBox(
                     width: controller.value.previewSize?.height ?? 1080,
                     height: controller.value.previewSize?.width ?? 1920,
                     child: CameraPreview(controller),
                   ),
-                );
-              },
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: _accentCyan),
+                ),
               ),
 
-              // ---> THE UPGRADED ERROR BLOCK <---
-              error: (error, stack) {
-                // Check if our provider threw the specific permanent denial error
-                final isPermanentlyDenied = error.toString().contains(
-                  'PERMISSION_PERMANENTLY_DENIED',
-                );
+              // 2. AR PAINTER (Crosshairs & Targets)
+              Positioned.fill(
+                child: Consumer(
+                  builder: (context, ref, child) {
+                    final compass = ref.watch(compassProvider);
+                    final accel = ref.watch(accelerometerProvider);
 
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.videocam_off_rounded,
-                          color: Colors.redAccent,
-                          size: 80,
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          "CAMERA REQUIRED",
-                          style: TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          isPermanentlyDenied
-                              ? "You previously denied camera access.\n\nPlease open your device settings and allow camera permissions to use the AR visualizer."
-                              : "Initialization failed: $error",
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 13,
-                            height: 1.6,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 40),
+                    return CustomPaint(
+                      painter: ArWorldPainter(
+                        currentAzimuth: compass.azimuth,
+                        currentRoll: accel.roll,
+                        targetAzimuth: trueAzimuth,
+                        targetName: targetSatellite.name,
+                        orbitSlot: targetSatellite.formattedPosition,
+                        isAligned:
+                            ((trueAzimuth - compass.azimuth).abs() < 3.0 ||
+                            (trueAzimuth - compass.azimuth).abs() > 357.0),
+                      ),
+                    );
+                  },
+                ),
+              ),
 
-                        // THE ESCAPE HATCH BUTTON
-                        if (isPermanentlyDenied)
-                          SizedBox(
-                            width: double.infinity,
-                            height: 54,
-                            child: OutlinedButton.icon(
-                              icon: const Icon(
-                                Icons.settings,
-                                color: _accentCyan,
-                              ),
-                              label: const Text(
-                                "OPEN APP SETTINGS",
-                                style: TextStyle(
-                                  color: _accentCyan,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(
-                                  color: _accentCyan.withValues(alpha: 0.5),
-                                  width: 2,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                backgroundColor: _accentCyan.withValues(
-                                  alpha: 0.05,
-                                ),
-                              ),
-                              onPressed: () {
-                                // Directs user to the OS settings for your app
-                                //openAppSettings();
-                                Geolocator.openAppSettings();
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // 2. AR PAINTER (Crosshairs & Targets)
-          Positioned.fill(
-            child: Consumer(
-              builder: (context, ref, child) {
-                final compass = ref.watch(compassProvider);
-                final accel = ref.watch(accelerometerProvider);
-
-                return CustomPaint(
-                  painter: ArWorldPainter(
-                    currentAzimuth: compass.azimuth,
-                    currentRoll: accel.roll,
-                    targetAzimuth: trueAzimuth,
-                    targetName: targetSatellite.name,
-                    orbitSlot: targetSatellite.formattedPosition,
-                    // --- THE FIX: AZIMUTH ONLY LOCK ---
-                    isAligned:
-                        ((trueAzimuth - compass.azimuth).abs() < 3.0 ||
-                        (trueAzimuth - compass.azimuth).abs() > 357.0),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // 3. UI OVERLAYS
-          SafeArea(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // --- TOP CLUSTER (Bar + Badges) ---
-                Column(
-                  mainAxisSize: MainAxisSize.min,
+              // 3. UI OVERLAYS
+              SafeArea(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top Bar
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(
-                              Icons.arrow_back_ios_new,
-                              color: Colors.white,
+                    // --- TOP CLUSTER (Bar + Badges) ---
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Top Bar
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(
+                                  Icons.arrow_back_ios_new,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black54,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: _accentCyan.withValues(
+                                          alpha: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      "TARGET: ${targetSatellite.name} [ ${targetSatellite.formattedPosition} ]",
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: _accentCyan,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.info_outline,
+                                  color: Color(0xFF00E5FF),
+                                ),
+                                onPressed: () {
+                                  ImageTutorialDialog.show(
+                                    context,
+                                    title: "AR Azimuth Compass",
+                                    description:
+                                        "Rotate the dish left or right until it faces the target satellite position.",
+                                    instructions: [
+                                      "Stand 1–2 meters (3–6 feet) behind the dish for the best view.",
+                                      "Keep the dish and LNB visible in the camera frame.",
+                                      "Place the dish LNB inside the on-screen circle.",
+                                      "Rotate the dish left or right while keeping the phone aligned with the dish.",
+                                      "Continue rotating until the target locks in the center.",
+                                      "When locked, the app will beep, vibrate (if enabled), and the azimuth value will turn green.",
+                                    ],
+                                    imagePath: 'assets/images/tutorial_ar.jpeg',
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // North Indicator Badge
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black87,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: settings.useTrueNorth
+                                    ? _accentCyan
+                                    : Colors.purpleAccent,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              settings.useTrueNorth
+                                  ? "🧭 TRUE NORTH MODE (GPS)"
+                                  : "🧲 MAGNETIC MODE (COMPASS)",
+                              style: TextStyle(
+                                color: settings.useTrueNorth
+                                    ? _accentCyan
+                                    : Colors.purpleAccent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
                             ),
                           ),
-                          Expanded(
-                            child: Center(
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Magnetic Calibration Warning
+                        Consumer(
+                          builder: (context, ref, child) {
+                            final compassState = ref.watch(compassProvider);
+                            if (!compassState.needsCalibration) {
+                              return const SizedBox.shrink();
+                            }
+                            return Center(
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 8,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.black54,
+                                  color: Colors.black87,
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: _accentCyan.withValues(alpha: 0.5),
+                                    color: _alertOrange,
+                                    width: 1.5,
                                   ),
                                 ),
-                                child: Text(
-                                  "TARGET: ${targetSatellite.name} [ ${targetSatellite.formattedPosition} ]",
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: _accentCyan,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1,
-                                    fontSize: 12,
-                                  ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.warning_amber_rounded,
+                                      color: _alertOrange,
+                                      size: 16,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      "Magnetic interference! Move device in ∞ pattern.",
+                                      style: TextStyle(
+                                        color: _alertOrange,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.info_outline,
-                              color: Color(0xFF00E5FF),
-                            ),
-                            onPressed: () {
-                              ImageTutorialDialog.show(
-                                context,
-                                title: "AR Azimuth Compass",
-                                description:
-                                    "Rotate the dish left or right until it faces the target satellite position.",
-                                instructions: [
-                                  "Stand 1–2 meters (3–6 feet) behind the dish for the best view.",
-                                  "Keep the dish and LNB visible in the camera frame.",
-                                  "Place the dish LNB inside the on-screen circle.",
-                                  "Rotate the dish left or right while keeping the phone aligned with the dish.",
-                                  "Continue rotating until the target locks in the center.",
-                                  "When locked, the app will beep, vibrate (if enabled), and the azimuth value will turn green.",
-                                ],
-                                imagePath: 'assets/images/tutorial_ar.jpeg',
-                              );
-                            },
-                          ),
-                        ],
-                      ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
 
-                    // North Indicator Badge
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black87,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: settings.useTrueNorth
-                                ? _accentCyan
-                                : Colors.purpleAccent,
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          settings.useTrueNorth
-                              ? "🧭 TRUE NORTH MODE (GPS)"
-                              : "🧲 MAGNETIC MODE (COMPASS)",
-                          style: TextStyle(
-                            color: settings.useTrueNorth
-                                ? _accentCyan
-                                : Colors.purpleAccent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Magnetic Calibration Warning
+                    // --- BOTTOM CLUSTER (Telemetry) ---
                     Consumer(
                       builder: (context, ref, child) {
-                        final compassState = ref.watch(compassProvider);
-                        if (!compassState.needsCalibration) {
-                          return const SizedBox.shrink();
-                        }
-                        return Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black87,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: _alertOrange,
-                                width: 1.5,
+                        final compass = ref.watch(compassProvider);
+
+                        final currentAzimuth = compass.azimuth;
+
+                        final bool isAzimuthLocked =
+                            (trueAzimuth - currentAzimuth).abs() < 3 ||
+                            (trueAzimuth - currentAzimuth).abs() > 357;
+
+                        // Kept strictly for the UI text color, doesn't affect main lock
+
+                        final String liveSlot = _getLiveApparentSlot(
+                          currentAzimuth,
+                          userLat,
+                          userLon,
+                          trueAzimuth,
+                          targetSatellite,
+                        );
+
+                        return Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                            horizontal: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _panelColor.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: _borderLight),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _buildMetricTile(
+                                  "ORBIT SLOT",
+                                  targetSatellite.formattedPosition,
+                                  "EQUATOR",
+                                  Colors.white,
+                                ),
                               ),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: _alertOrange,
-                                  size: 16,
+                              Container(
+                                width: 1,
+                                height: 30,
+                                color: Colors.white10,
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: _buildMetricTile(
+                                  "LIVE SLOT | AZIMUTH",
+                                  "$liveSlot | ${currentAzimuth.toStringAsFixed(1)}",
+                                  "REQ: ${targetSatellite.position} ➔ ${trueAzimuth.toStringAsFixed(1)}°",
+                                  isAzimuthLocked
+                                      ? _successGreen
+                                      : _alertOrange,
                                 ),
-                                SizedBox(width: 8),
-                                Text(
-                                  "Magnetic interference! Move device in ∞ pattern.",
-                                  style: TextStyle(
-                                    color: _alertOrange,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 30,
+                                color: Colors.white10,
+                              ),
+                              Expanded(
+                                child: _buildMetricTile(
+                                  "ELEVATION",
+                                  "${trueElevation.toStringAsFixed(1)}°",
+                                  "SET ON DISH",
+                                  _accentCyan,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         );
                       },
                     ),
                   ],
                 ),
-
-                // --- BOTTOM CLUSTER (Telemetry) ---
-                Consumer(
-                  builder: (context, ref, child) {
-                    final compass = ref.watch(compassProvider);
-
-                    final currentAzimuth = compass.azimuth;
-
-                    final bool isAzimuthLocked =
-                        (trueAzimuth - currentAzimuth).abs() < 3 ||
-                        (trueAzimuth - currentAzimuth).abs() > 357;
-
-                    // Kept strictly for the UI text color, doesn't affect main lock
-
-                    final String liveSlot = _getLiveApparentSlot(
-                      currentAzimuth,
-                      userLat,
-                      userLon,
-                      trueAzimuth,
-                      targetSatellite,
-                    );
-
-                    return Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 16,
-                        horizontal: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _panelColor.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _borderLight),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _buildMetricTile(
-                              "ORBIT SLOT",
-                              targetSatellite.formattedPosition,
-                              "EQUATOR",
-                              Colors.white,
-                            ),
-                          ),
-                          Container(
-                            width: 1,
-                            height: 30,
-                            color: Colors.white10,
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: _buildMetricTile(
-                              "LIVE SLOT | AZIMUTH",
-                              "$liveSlot | ${currentAzimuth.toStringAsFixed(1)}",
-                              "REQ: ${targetSatellite.position} ➔ ${trueAzimuth.toStringAsFixed(1)}°",
-                              isAzimuthLocked ? _successGreen : _alertOrange,
-                            ),
-                          ),
-                          Container(
-                            width: 1,
-                            height: 30,
-                            color: Colors.white10,
-                          ),
-                          Expanded(
-                            child: _buildMetricTile(
-                              "ELEVATION",
-                              "${trueElevation.toStringAsFixed(1)}°",
-                              "SET ON DISH",
-                              _accentCyan,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -16,7 +16,6 @@ import '../../core/providers/settings_provider.dart';
 import '../tutorial/tutorial_dialog.dart';
 import '../setting/settings_menu.dart';
 import '../../core/providers/accelerometer_provider.dart';
-// import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 
 // ==========================================
@@ -31,7 +30,7 @@ class LOSScannerScreen extends ConsumerStatefulWidget {
   const LOSScannerScreen({super.key});
 
   @override
-  ConsumerState<LOSScannerScreen> createState() => _LOSScannerScreenState(); // Fixed state name!
+  ConsumerState<LOSScannerScreen> createState() => _LOSScannerScreenState();
 }
 
 class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
@@ -57,7 +56,6 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
 
   Future<void> _startProximityLoop() async {
     while (_isPinging && mounted) {
-      // --- NEW FIX: PAUSE EVERYTHING IF APP IS IN BACKGROUND ---
       if (!_isAppInForeground) {
         await Future.delayed(const Duration(milliseconds: 500));
         continue;
@@ -69,7 +67,6 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
       final locationState = ref.read(locationProvider);
       final settings = ref.read(settingsProvider);
 
-      // --- NEW FIX: SILENCE AUDIO & PAUSE MATH IF NO GPS LOCK ---
       if (!locationState.isLocked ||
           locationState.lat == null ||
           locationState.lon == null) {
@@ -77,7 +74,7 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
         _wasSoundEnabled = false;
         _wasLocked = false;
         await Future.delayed(const Duration(milliseconds: 1000));
-        continue; // Skip the rest of the loop until GPS returns!
+        continue;
       }
 
       final targetSatellite = ref.read(activeSatelliteProvider);
@@ -104,10 +101,9 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
 
       final bool isLocked = azDiff < 2.0;
 
-      // --- AUDIO LOGIC (WITH STOP BUGFIX) ---
       if (settings.enableSound) {
         if (isLocked != _wasLocked || !_wasSoundEnabled) {
-          await _audioPlayer.stop(); // Clear buffer before swapping tracks
+          await _audioPlayer.stop();
           if (isLocked) {
             await _audioPlayer.play(AssetSource('audio/lock.mp3'));
           } else {
@@ -139,13 +135,7 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _isAppInForeground = true;
-      // 🛑 THE FIX: Force Riverpod to re-run the camera check!
-      // When they swipe back from settings, this clears the error
-      // and instantly boots up the camera hardware.
       ref.invalidate(cameraProvider);
-      // --- FORCE THE LOOP TO RE-EVALUATE AUDIO ---
-      // By toggling these, the next loop iteration will see a "change"
-      // and trigger the audio logic block automatically.
       _wasLocked = !_wasLocked;
       _wasSoundEnabled = false;
     } else if (state == AppLifecycleState.paused ||
@@ -170,6 +160,7 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
     final locationState = ref.watch(locationProvider);
     final settings = ref.watch(settingsProvider);
     final cameraAsync = ref.watch(cameraProvider);
+
     // ==========================================
     // UPGRADED GPS LOCK SCREEN w/ ESCAPE HATCH
     // ==========================================
@@ -179,12 +170,10 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
         (locationState.lat == 0.0 && locationState.lon == 0.0)) {
       final bool hasError = locationState.error != null;
 
-      // Determine exactly what state we are in
       final bool isHardwareOff =
           hasError && locationState.error!.contains("TURN ON");
       final bool isPermDeniedForever =
           hasError && locationState.error!.contains("PERMANENTLY DENIED");
-      // This is our new state for first-time users!
       final bool isFirstTimeAsking =
           hasError && locationState.error == "PERMISSION REQUIRED";
 
@@ -249,9 +238,6 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
 
                       const SizedBox(height: 24),
 
-                      // ---------------------------------------------
-                      // ESCAPE HATCH 1: AUTO GPS / OS SETTINGS
-                      // ---------------------------------------------
                       if (isFirstTimeAsking ||
                           isHardwareOff ||
                           isPermDeniedForever) ...[
@@ -287,7 +273,6 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
                             ),
                             onPressed: () {
                               if (isFirstTimeAsking) {
-                                // Triggers the native popup we just made!
                                 ref
                                     .read(locationProvider.notifier)
                                     .promptForPermission();
@@ -302,9 +287,6 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
                         const SizedBox(height: 16),
                       ],
 
-                      // ---------------------------------------------
-                      // ESCAPE HATCH 2: MANUAL OVERRIDE
-                      // ---------------------------------------------
                       SizedBox(
                         width: double.infinity,
                         height: 54,
@@ -345,8 +327,6 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
                   ),
                 ),
               ),
-
-              // UI BACK BUTTON
               Positioned(
                 top: 0,
                 left: 0,
@@ -384,249 +364,152 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
       targetSatellite.position,
     );
 
+    final trueAzimuth = SatelliteMath.getAzimuth(
+      userLat: userLat,
+      userLon: userLon,
+      satLon: targetSatellite.position,
+      useTrueNorth: settings.useTrueNorth,
+      magneticDeclination: currentLocalDeclination,
+    );
+
     const double toleranceDegrees = 2.0;
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. CAMERA BACKGROUND
-          // 1. CAMERA BACKGROUND
-          Positioned.fill(
-            child: cameraAsync.when(
-              data: (controller) {
-                return FittedBox(
+
+      // 🛑 THE FIX: Entire UI is wrapped in the camera state!
+      body: cameraAsync.when(
+        loading: () =>
+            const Center(child: CircularProgressIndicator(color: _accentCyan)),
+
+        // ==========================================
+        // CAMERA ERROR SCREEN
+        // ==========================================
+        error: (error, stack) {
+          final isPermanentlyDenied = error.toString().contains(
+            'PERMISSION_PERMANENTLY_DENIED',
+          );
+
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.videocam_off_rounded,
+                    color: Colors.redAccent,
+                    size: 80,
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "CAMERA REQUIRED",
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    isPermanentlyDenied
+                        ? "You previously denied camera access.\n\nPlease open your device settings and allow camera permissions to use the AR visualizer."
+                        : "Initialization failed: $error",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                      height: 1.6,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  if (isPermanentlyDenied)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.settings, color: _accentCyan),
+                        label: const Text(
+                          "OPEN APP SETTINGS",
+                          style: TextStyle(
+                            color: _accentCyan,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: _accentCyan.withValues(alpha: 0.5),
+                            width: 2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          backgroundColor: _accentCyan.withValues(alpha: 0.05),
+                        ),
+                        onPressed: () {
+                          Geolocator.openAppSettings();
+                        },
+                      ),
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // THE FIX: Adding the "GO BACK" button so they aren't stuck!
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      label: const Text(
+                        "GO BACK",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.white24, width: 2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () {
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+
+        // ==========================================
+        // ACTIVE AR UI (Only shows if camera is working)
+        // ==========================================
+        data: (controller) {
+          return Stack(
+            children: [
+              // 1. CAMERA BACKGROUND
+              Positioned.fill(
+                child: FittedBox(
                   fit: BoxFit.cover,
                   child: SizedBox(
                     width: controller.value.previewSize?.height ?? 1080,
                     height: controller.value.previewSize?.width ?? 1920,
                     child: CameraPreview(controller),
                   ),
-                );
-              },
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: _accentCyan),
+                ),
               ),
 
-              // ---> THE UPGRADED ERROR BLOCK <---
-              error: (error, stack) {
-                // Check if our provider threw the specific permanent denial error
-                final isPermanentlyDenied = error.toString().contains(
-                  'PERMISSION_PERMANENTLY_DENIED',
-                );
-
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.videocam_off_rounded,
-                          color: Colors.redAccent,
-                          size: 80,
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          "CAMERA REQUIRED",
-                          style: TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          isPermanentlyDenied
-                              ? "You previously denied camera access.\n\nPlease open your device settings and allow camera permissions to use the AR visualizer."
-                              : "Initialization failed: $error",
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 13,
-                            height: 1.6,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-
-                        // THE ESCAPE HATCH BUTTON
-                        if (isPermanentlyDenied)
-                          SizedBox(
-                            width: double.infinity,
-                            height: 54,
-                            child: OutlinedButton.icon(
-                              icon: const Icon(
-                                Icons.settings,
-                                color: _accentCyan,
-                              ),
-                              label: const Text(
-                                "OPEN APP SETTINGS",
-                                style: TextStyle(
-                                  color: _accentCyan,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(
-                                  color: _accentCyan.withValues(alpha: 0.5),
-                                  width: 2,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                backgroundColor: _accentCyan.withValues(
-                                  alpha: 0.05,
-                                ),
-                              ),
-                              onPressed: () {
-                                // Directs user to the OS settings for your app
-                                //openAppSettings();
-                                Geolocator.openAppSettings();
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // 2. TRUE AR HUD PAINTER (Azimuth + Elevation)
-          Positioned.fill(
-            child: Consumer(
-              builder: (context, ref, child) {
-                final accelState = ref.watch(accelerometerProvider);
-                final compassState = ref.watch(compassProvider);
-
-                final double currentElevationDegrees = accelState.elevation;
-                final double currentAzimuthDegrees = compassState.azimuth;
-
-                final trueAzimuth = SatelliteMath.getAzimuth(
-                  userLat: userLat,
-                  userLon: userLon,
-                  satLon: targetSatellite.position,
-                  useTrueNorth: settings.useTrueNorth,
-                  magneticDeclination: currentLocalDeclination,
-                );
-
-                // Calculate Deltas for locking
-                double elDelta =
-                    (currentElevationDegrees - targetElevationDegrees).abs();
-
-                double azDelta = (trueAzimuth - currentAzimuthDegrees).abs();
-                if (azDelta > 180) azDelta = 360 - azDelta;
-
-                bool isAligned =
-                    (elDelta <= toleranceDegrees) &&
-                    (azDelta <= toleranceDegrees);
-
-                return CustomPaint(
-                  painter: ArTrackingPainter(
-                    currentElevation: currentElevationDegrees,
-                    targetElevation: targetElevationDegrees,
-                    currentAzimuth: currentAzimuthDegrees,
-                    targetAzimuth: trueAzimuth,
-                    isAligned: isAligned,
-                    targetName: targetSatellite.name,
-                    orbitSlot: targetSatellite.formattedPosition,
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // 3. UI OVERLAYS
-          SafeArea(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // TOP BAR
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(
-                          Icons.arrow_back_ios_new,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: _accentCyan.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                "LINE OF SIGHT AR",
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                "TARGET: ${targetSatellite.name} [ ${targetSatellite.formattedPosition} ]",
-                                textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: _accentCyan,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.info_outline,
-                          color: Color(0xFF00E5FF),
-                        ),
-                        onPressed: () {
-                          ImageTutorialDialog.show(
-                            context,
-                            title: "Line-of-Sight Check",
-                            description:
-                                "Verify that the satellite signal path is clear of trees, buildings, or other obstacles.",
-                            instructions: [
-                              "Stand at the location where the dish will be installed.",
-                              "Hold the phone upright as if taking a photo of the sky.",
-                              "Point the camera toward the sky and follow the on-screen satellite marker.",
-                              "Keep the center pointer aligned with the satellite position shown on the screen.",
-                              "Check for any trees, buildings, poles, walls, or other objects blocking the view in that direction.",
-                              "If the satellite marker appears behind an obstacle, choose a different dish installation location.",
-                            ],
-                            imagePath: 'assets/images/tutorial_los.jpg',
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                // BOTTOM TELEMETRY AND GUIDANCE
-                Consumer(
+              // 2. TRUE AR HUD PAINTER (Azimuth + Elevation)
+              Positioned.fill(
+                child: Consumer(
                   builder: (context, ref, child) {
                     final accelState = ref.watch(accelerometerProvider);
                     final compassState = ref.watch(compassProvider);
@@ -634,100 +517,220 @@ class _LOSScannerScreenState extends ConsumerState<LOSScannerScreen>
                     final double currentElevationDegrees = accelState.elevation;
                     final double currentAzimuthDegrees = compassState.azimuth;
 
-                    final trueAzimuth = SatelliteMath.getAzimuth(
-                      userLat: userLat,
-                      userLon: userLon,
-                      satLon: targetSatellite.position,
-                      useTrueNorth: settings.useTrueNorth,
-                      magneticDeclination: currentLocalDeclination,
-                    );
-
+                    // Calculate Deltas for locking
                     double elDelta =
-                        targetElevationDegrees - currentElevationDegrees;
+                        (currentElevationDegrees - targetElevationDegrees)
+                            .abs();
 
-                    double azDelta = trueAzimuth - currentAzimuthDegrees;
-                    azDelta = (azDelta + 540) % 360 - 180;
+                    double azDelta = (trueAzimuth - currentAzimuthDegrees)
+                        .abs();
+                    if (azDelta > 180) azDelta = 360 - azDelta;
 
                     bool isAligned =
-                        (elDelta.abs() <= toleranceDegrees) &&
-                        (azDelta.abs() <= toleranceDegrees);
+                        (elDelta <= toleranceDegrees) &&
+                        (azDelta <= toleranceDegrees);
 
-                    Color bannerColor = isAligned
-                        ? _successGreen
-                        : _alertOrange;
-
-                    String guidanceText;
-                    if (isAligned) {
-                      guidanceText = "✓ TARGET ACQUIRED - CHECK FOR OBSTACLES";
-                    } else if (azDelta.abs() > 10) {
-                      guidanceText =
-                          "TURN ${azDelta > 0 ? 'RIGHT' : 'LEFT'} TO FIND AZIMUTH";
-                    } else {
-                      guidanceText =
-                          "TILT ${elDelta > 0 ? 'UP' : 'DOWN'} TO FIND ELEVATION";
-                    }
-
-                    return Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 16,
-                        horizontal: 16,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black87,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: bannerColor.withValues(alpha: 0.5),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildDataColumn(
-                                'TARGET AZIMUTH',
-                                '${trueAzimuth.toStringAsFixed(1)}°',
-                                (azDelta.abs() <= toleranceDegrees)
-                                    ? _successGreen
-                                    : Colors.white,
-                              ),
-                              Container(
-                                width: 1,
-                                height: 30,
-                                color: Colors.white24,
-                              ),
-                              _buildDataColumn(
-                                'TARGET ELEVATION',
-                                '${targetElevationDegrees.toStringAsFixed(1)}°',
-                                (elDelta.abs() <= toleranceDegrees)
-                                    ? _successGreen
-                                    : Colors.white,
-                              ),
-                            ],
-                          ),
-                          const Divider(color: Colors.white24, height: 24),
-                          Text(
-                            guidanceText,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: bannerColor,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                    return CustomPaint(
+                      painter: ArTrackingPainter(
+                        currentElevation: currentElevationDegrees,
+                        targetElevation: targetElevationDegrees,
+                        currentAzimuth: currentAzimuthDegrees,
+                        targetAzimuth: trueAzimuth,
+                        isAligned: isAligned,
+                        targetName: targetSatellite.name,
+                        orbitSlot: targetSatellite.formattedPosition,
                       ),
                     );
                   },
                 ),
-              ],
-            ),
-          ),
-        ],
+              ),
+
+              // 3. UI OVERLAYS
+              SafeArea(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // TOP BAR
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(
+                              Icons.arrow_back_ios_new,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Expanded(
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: _accentCyan.withValues(alpha: 0.5),
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    "LINE OF SIGHT AR",
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    "TARGET: ${targetSatellite.name} [ ${targetSatellite.formattedPosition} ]",
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: _accentCyan,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.info_outline,
+                              color: Color(0xFF00E5FF),
+                            ),
+                            onPressed: () {
+                              ImageTutorialDialog.show(
+                                context,
+                                title: "Line-of-Sight Check",
+                                description:
+                                    "Verify that the satellite signal path is clear of trees, buildings, or other obstacles.",
+                                instructions: [
+                                  "Stand at the location where the dish will be installed.",
+                                  "Hold the phone upright as if taking a photo of the sky.",
+                                  "Point the camera toward the sky and follow the on-screen satellite marker.",
+                                  "Keep the center pointer aligned with the satellite position shown on the screen.",
+                                  "Check for any trees, buildings, poles, walls, or other objects blocking the view in that direction.",
+                                  "If the satellite marker appears behind an obstacle, choose a different dish installation location.",
+                                ],
+                                imagePath: 'assets/images/tutorial_los.jpg',
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // BOTTOM TELEMETRY AND GUIDANCE
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final accelState = ref.watch(accelerometerProvider);
+                        final compassState = ref.watch(compassProvider);
+
+                        final double currentElevationDegrees =
+                            accelState.elevation;
+                        final double currentAzimuthDegrees =
+                            compassState.azimuth;
+
+                        double elDelta =
+                            targetElevationDegrees - currentElevationDegrees;
+
+                        double azDelta = trueAzimuth - currentAzimuthDegrees;
+                        azDelta = (azDelta + 540) % 360 - 180;
+
+                        bool isAligned =
+                            (elDelta.abs() <= toleranceDegrees) &&
+                            (azDelta.abs() <= toleranceDegrees);
+
+                        Color bannerColor = isAligned
+                            ? _successGreen
+                            : _alertOrange;
+
+                        String guidanceText;
+                        if (isAligned) {
+                          guidanceText =
+                              "✓ TARGET ACQUIRED - CHECK FOR OBSTACLES";
+                        } else if (azDelta.abs() > 10) {
+                          guidanceText =
+                              "TURN ${azDelta > 0 ? 'RIGHT' : 'LEFT'} TO FIND AZIMUTH";
+                        } else {
+                          guidanceText =
+                              "TILT ${elDelta > 0 ? 'UP' : 'DOWN'} TO FIND ELEVATION";
+                        }
+
+                        return Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                            horizontal: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: bannerColor.withValues(alpha: 0.5),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  _buildDataColumn(
+                                    'TARGET AZIMUTH',
+                                    '${trueAzimuth.toStringAsFixed(1)}°',
+                                    (azDelta.abs() <= toleranceDegrees)
+                                        ? _successGreen
+                                        : Colors.white,
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 30,
+                                    color: Colors.white24,
+                                  ),
+                                  _buildDataColumn(
+                                    'TARGET ELEVATION',
+                                    '${targetElevationDegrees.toStringAsFixed(1)}°',
+                                    (elDelta.abs() <= toleranceDegrees)
+                                        ? _successGreen
+                                        : Colors.white,
+                                  ),
+                                ],
+                              ),
+                              const Divider(color: Colors.white24, height: 24),
+                              Text(
+                                guidanceText,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: bannerColor,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
