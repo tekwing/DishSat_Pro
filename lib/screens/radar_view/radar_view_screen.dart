@@ -554,7 +554,7 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
   }
 
   Widget _buildAzimuthMatchData(String label, double current, bool isLocked) {
-    Color valueColor = isLocked ? _successGreen : Colors.white;
+    Color valueColor = isLocked ? _successGreen : _accentCyan;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
