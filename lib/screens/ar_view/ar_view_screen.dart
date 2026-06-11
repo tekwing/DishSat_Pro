@@ -453,9 +453,10 @@ class _ArViewScreenState extends ConsumerState<ArViewScreen>
                                 context,
                                 title: "AR Azimuth Compass",
                                 description:
-                                    "Rotate the dish left/right to face the exact satellite position.",
+                                    "Rotate the dish left or right until it faces the target satellite position.",
                                 instructions: [
-                                  "Stand behind the dish.",
+                                  "Stand 1–2 meters (3–6 feet) behind the dish for the best view.",
+                                  "Keep the dish and LNB visible in the camera frame.",
                                   "Place the dish LNB inside the on-screen circle.",
                                   "Rotate the dish left or right while keeping the phone aligned with the dish.",
                                   "Continue rotating until the target locks in the center.",

@@ -286,13 +286,16 @@ class _GraphViewScreenState extends ConsumerState<GraphViewScreen>
             onPressed: () {
               ImageTutorialDialog.show(
                 context,
-                title: "Dish Elevation Pitch",
-                description: "Set the exact upward vertical tilt of the dish.",
+                title: "Radar Azimuth Compass",
+                description:
+                    "Align the dish to the correct azimuth using live radar guidance.",
                 instructions: [
-                  "Position device securely on dish or LNB assembly for stable tracking visibility.",
-                  "Maintain steady handling to preserve sensor alignment accuracy.",
-                  "Follow live orbital radar guidance for azimuth correction.",
-                  "Achieve lock when radar centroid aligns and status indicator turns GREEN.",
+                  "Stand 0.5–1 meter (2–3 feet) away from the dish for best compass accuracy.",
+                  "Hold the device steady and keep it facing the same direction as the antenna.",
+                  "Avoid placing the device on the dish or LNB arm, as nearby metal may affect compass readings.",
+                  "If readings fluctuate, move away from metal objects and recalibrate the compass.",
+                  "For easier installation, switch to AR Camera Mode for visual alignment guidance.",
+                  "Follow the live radar guidance until the radar centroid aligns and the status indicator turns GREEN.",
                 ],
                 imagePath: 'assets/images/tutorial_radar.jpeg',
               );

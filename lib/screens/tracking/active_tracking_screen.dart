@@ -319,14 +319,16 @@ class _ActiveTrackingScreenState extends ConsumerState<ActiveTrackingScreen>
             onPressed: () {
               ImageTutorialDialog.show(
                 context,
-                title: "Dish Elevation Pitch",
-                description: "Set the exact upward vertical tilt of the dish.",
+                title: "Map Azimuth Guide",
+                description:
+                    "Align the dish to the target satellite using the map view.",
                 instructions: [
-                  "Mount the phone flat on the dish or LNB support arm.",
-                  "Ensure the phone is aligned with the dish pointing direction.",
-                  "Rotate the dish slowly left or right while watching the live azimuth indicator.",
-                  "Match the current azimuth with the target azimuth shown on the screen.",
-                  "When alignment is reached, the indicator will turn green and the position is locked.",
+                  "Stand 0.5–1 meter (2–3 feet) away from the dish for best compass accuracy.",
+                  "Use the map view to identify the target satellite direction.",
+                  "Keep the device facing the same direction as the dish.",
+                  "Rotate the dish left or right while monitoring the live azimuth indicator.",
+                  "Continue until the current azimuth matches the target azimuth.",
+                  "When aligned, the indicator will turn green and the position is locked.",
                 ],
                 imagePath: 'assets/images/tutorial_tracking.jpg',
               );
