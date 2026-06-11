@@ -12,7 +12,7 @@ import '../../models/satellite_model.dart';
 
 class ActiveSatelliteNotifier extends Notifier<Satellite> {
   // Use a dedicated box for app settings/preferences
-  static const String _boxName = 'settingsBox';
+  static const String _boxName = 'app_settings';
   static const String _storageKey = 'ACTIVE_SATELLITE_NAME';
 
   @override
