@@ -1,29 +1,44 @@
 import 'package:camera/camera.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart'; // ADD THIS
 
-// 1. The .autoDispose modifier is the magic key.
-// It tells Riverpod: "When no screens are watching this, destroy it."
 final cameraProvider = FutureProvider.autoDispose<CameraController>((
   ref,
 ) async {
-  // Fetch available cameras
+  // 1. EXPLICIT PERMISSION CHECK
+  var status = await Permission.camera.status;
+
+  // If it's denied (first time), ask for it natively
+  if (status.isDenied) {
+    status = await Permission.camera.request();
+  }
+
+  // If they previously clicked "Deny" or "Don't ask again"
+  if (status.isPermanentlyDenied) {
+    // Throw a specific error code we can catch in the UI
+    throw Exception('PERMISSION_PERMANENTLY_DENIED');
+  }
+
+  // If it's still not granted for any other reason
+  if (!status.isGranted) {
+    throw Exception('Camera permission is required for AR.');
+  }
+
+  // 2. INITIALIZE CAMERA (Your original code)
   final cameras = await availableCameras();
   if (cameras.isEmpty) {
     throw Exception('No cameras available on this device.');
   }
 
-  // Initialize the back camera
   final controller = CameraController(
     cameras.first,
     ResolutionPreset.high,
-    enableAudio: false, // Don't request mic permissions for AR
+    enableAudio: false,
   );
 
   await controller.initialize();
 
-  // 2. EXPLICIT CLEANUP
-  // When the user pops the AR screen, Riverpod triggers this callback.
-  // This physically releases the hardware camera back to the phone OS.
+  // 3. EXPLICIT CLEANUP
   ref.onDispose(() {
     controller.dispose();
   });
