@@ -50,7 +50,6 @@ final locationProvider = NotifierProvider<LocationNotifier, LocationState>(
   LocationNotifier.new,
 );
 
-// --- ADDED: 'with WidgetsBindingObserver' ---
 class LocationNotifier extends Notifier<LocationState>
     with WidgetsBindingObserver {
   StreamSubscription<Position>? _sub;
@@ -97,7 +96,7 @@ class LocationNotifier extends Notifier<LocationState>
         if (this.state.error != null && !this.state.isManualOverride) {
           // Scenario A: They had an error (like GPS off). Re-run the whole init!
           debugPrint("App resumed! Re-checking hardware GPS...");
-          _init(); 
+          _init();
         } else if (!this.state.isManualOverride) {
           // Scenario B: They had a good connection. Just unpause the stream!
           _sub?.resume();
@@ -128,16 +127,14 @@ class LocationNotifier extends Notifier<LocationState>
 
     var permission = await service.checkPermission();
 
+    // 🛑 THE FIX: STOP AUTO-REQUESTING PERMISSION!
+    // Instead of forcing the OS popup, we just tell the UI that we need it.
     if (permission == LocationPermission.denied) {
-      permission = await service.requestPermission();
-
-      if (permission == LocationPermission.denied) {
-        state = state.copyWith(
-          isLocked: false,
-          error: "LOCATION PERMISSION DENIED",
-        );
-        return;
-      }
+      state = state.copyWith(
+        isLocked: false,
+        error: "PERMISSION REQUIRED", // This perfectly matches our new UI logic
+      );
+      return;
     }
 
     if (permission == LocationPermission.deniedForever) {
@@ -197,6 +194,20 @@ class LocationNotifier extends Notifier<LocationState>
         }
       },
     );
+  }
+
+  // ==========================================
+  // PERMISSION CONTROLS (NEW)
+  // ==========================================
+
+  Future<void> promptForPermission() async {
+    final service = ref.read(locationServiceProvider);
+
+    // 1. Trigger the native OS popup explicitly
+    await service.requestPermission();
+
+    // 2. Re-run the hardware check instantly after they answer
+    _init();
   }
 
   // ==========================================
